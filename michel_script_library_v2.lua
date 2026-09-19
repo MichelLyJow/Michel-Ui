@@ -1,0 +1,773 @@
+-- PART 1: WIND UI ENGINE v2
+local CustomWindUI = {}
+CustomWindUI.__index = CustomWindUI
+
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+
+local T = {
+    Glass = Color3.fromRGB(255, 255, 255),
+    Sky   = Color3.fromRGB(56, 189, 248),
+    Text  = Color3.fromRGB(245, 247, 250),
+    Sub   = Color3.fromRGB(148, 160, 184),
+    Red   = Color3.fromRGB(239, 68, 68),
+    Green = Color3.fromRGB(74, 222, 128),
+    Amber = Color3.fromRGB(251, 191, 36),
+    Dark  = Color3.fromRGB(10, 14, 22),
+}
+
+local function corner(inst, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 10)
+    c.Parent = inst
+    return c
+end
+
+local function stroke(inst, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color or T.Glass
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0.8
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = inst
+    return s
+end
+
+local function gradient(inst, c0, c1, rot)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(c0, c1)
+    g.Rotation = rot or 45
+    g.Parent = inst
+    return g
+end
+
+local function padding(inst, l, t, r, b)
+    local p = Instance.new("UIPadding")
+    p.PaddingLeft = UDim.new(0, l)
+    p.PaddingTop = UDim.new(0, t)
+    p.PaddingRight = UDim.new(0, r)
+    p.PaddingBottom = UDim.new(0, b)
+    p.Parent = inst
+    return p
+end
+
+local function tween(inst, time, props, style, dir)
+    local tw = TweenService:Create(inst, TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
+    tw:Play()
+    return tw
+end
+
+local function label(props)
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.Font = Enum.Font.Gotham
+    l.TextColor3 = T.Text
+    l.TextSize = 12
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.TextTruncate = Enum.TextTruncate.AtEnd
+    for k, v in pairs(props) do l[k] = v end
+    return l
+end
+
+local function isPointer(input)
+    return input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch
+end
+
+local function isMove(input)
+    return input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
+end
+
+function CustomWindUI:CreateWindow(config)
+    config = config or {}
+
+    local parentGui = (gethui and gethui()) or CoreGui
+    for _, root in ipairs({ CoreGui, parentGui }) do
+        local old = root:FindFirstChild("WindCustomReplicate")
+        if old then old:Destroy() end
+    end
+
+    local conns = {}
+    local function connect(signal, fn)
+        local c = signal:Connect(fn)
+        table.insert(conns, c)
+        return c
+    end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "WindCustomReplicate"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.IgnoreGuiInset = true
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    if syn and syn.protect_gui then pcall(syn.protect_gui, ScreenGui)
+    elseif protectgui then pcall(protectgui, ScreenGui) end
+
+    local okParent = pcall(function() ScreenGui.Parent = parentGui end)
+    if not okParent then ScreenGui.Parent = CoreGui end
+
+    ScreenGui.Destroying:Connect(function()
+        for _, c in ipairs(conns) do c:Disconnect() end
+    end)
+
+    -- UKURAN (aman untuk layar HP)
+    local cam = workspace.CurrentCamera
+    local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+    local reqSize = config.Size or UDim2.fromOffset(540, 340)
+    local defW = math.min(reqSize.X.Offset, vp.X - 24)
+    local defH = math.min(reqSize.Y.Offset, vp.Y - 24)
+    local maxW = math.min(760, vp.X - 24)
+    local maxH = math.min(480, vp.Y - 24)
+    local minW = math.min(400, vp.X - 24)
+    local minH = math.min(260, vp.Y - 24)
+
+    local isOpen, animating, isMax, resizing = true, false, false, false
+
+    -- CONTAINER + SHADOW
+    local Container = Instance.new("Frame")
+    Container.Name = "Container"
+    Container.AnchorPoint = Vector2.new(0.5, 0.5)
+    Container.Position = UDim2.fromScale(0.5, 0.5)
+    Container.Size = UDim2.fromOffset(defW, defH)
+    Container.BackgroundTransparency = 1
+    Container.Parent = ScreenGui
+
+    local scale = Instance.new("UIScale")
+    scale.Parent = Container
+
+    local Shadow = Instance.new("ImageLabel")
+    Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+    Shadow.Position = UDim2.new(0.5, 0, 0.5, 6)
+    Shadow.Size = UDim2.new(1, 44, 1, 44)
+    Shadow.BackgroundTransparency = 1
+    Shadow.Image = "rbxassetid://6014261993"
+    Shadow.ImageColor3 = Color3.new(0, 0, 0)
+    Shadow.ImageTransparency = 0.5
+    Shadow.ScaleType = Enum.ScaleType.Slice
+    Shadow.SliceCenter = Rect.new(49, 49, 450, 450)
+    Shadow.Parent = Container
+
+    local Main = Instance.new("Frame")
+    Main.Name = "MainFrame"
+    Main.Size = UDim2.fromScale(1, 1)
+    Main.BackgroundColor3 = T.Glass
+    Main.BackgroundTransparency = 0.08
+    Main.BorderSizePixel = 0
+    Main.ClipsDescendants = true
+    Main.Active = true
+    Main.Parent = Container
+    corner(Main, 16)
+    stroke(Main, T.Glass, 1.2, 0.75)
+    gradient(Main, Color3.fromRGB(28, 38, 62), Color3.fromRGB(12, 15, 24), 60)
+
+    -- DRAG (dengan pembeda klik vs geser)
+    local function makeDraggable(handle, target, onClick)
+        local dragging, moved, dragStart, startPos = false, false, nil, nil
+        connect(handle.InputBegan, function(input)
+            if resizing or not isPointer(input) then return end
+            dragging, moved = true, false
+            dragStart = input.Position
+            startPos = target.Position
+            local c
+            c = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    c:Disconnect()
+                    if not moved and onClick then onClick() end
+                end
+            end)
+        end)
+        connect(UserInputService.InputChanged, function(input)
+            if dragging and not resizing and isMove(input) then
+                local d = input.Position - dragStart
+                if d.Magnitude > 4 then moved = true end
+                target.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + d.X,
+                    startPos.Y.Scale, startPos.Y.Offset + d.Y
+                )
+            end
+        end)
+    end
+
+    -- SIDEBAR
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Position = UDim2.fromOffset(6, 6)
+    Sidebar.Size = UDim2.new(0, 144, 1, -12)
+    Sidebar.BackgroundColor3 = T.Glass
+    Sidebar.BackgroundTransparency = 0.93
+    Sidebar.BorderSizePixel = 0
+    Sidebar.Active = true
+    Sidebar.Parent = Main
+    corner(Sidebar, 12)
+    stroke(Sidebar, T.Glass, 1, 0.85)
+
+    local Logo = Instance.new("ImageLabel")
+    Logo.Position = UDim2.fromOffset(10, 10)
+    Logo.Size = UDim2.fromOffset(30, 30)
+    Logo.BackgroundColor3 = T.Sky
+    Logo.BackgroundTransparency = 0.85
+    Logo.Image = config.Icon or ""
+    Logo.ScaleType = Enum.ScaleType.Crop
+    Logo.Parent = Sidebar
+    corner(Logo, 8)
+
+    label({
+        Parent = Sidebar, Position = UDim2.fromOffset(48, 10), Size = UDim2.new(1, -56, 0, 30),
+        Text = config.Title or "WindUI", Font = Enum.Font.GothamBold, TextSize = 12,
+        TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextYAlignment = Enum.TextYAlignment.Center,
+    })
+    label({
+        Parent = Sidebar, Position = UDim2.fromOffset(12, 45), Size = UDim2.new(1, -24, 0, 12),
+        Text = config.Author or "", TextSize = 10, TextColor3 = T.Sub,
+    })
+
+    local Divider = Instance.new("Frame")
+    Divider.Position = UDim2.fromOffset(10, 64)
+    Divider.Size = UDim2.new(1, -20, 0, 1)
+    Divider.BackgroundColor3 = T.Glass
+    Divider.BackgroundTransparency = 0.88
+    Divider.BorderSizePixel = 0
+    Divider.Parent = Sidebar
+
+    local Nav = Instance.new("Frame")
+    Nav.Position = UDim2.fromOffset(8, 74)
+    Nav.Size = UDim2.new(1, -16, 0, 32)
+    Nav.BackgroundColor3 = T.Sky
+    Nav.BackgroundTransparency = 0.86
+    Nav.BorderSizePixel = 0
+    Nav.Parent = Sidebar
+    corner(Nav, 9)
+    stroke(Nav, T.Sky, 1, 0.65)
+
+    local Accent = Instance.new("Frame")
+    Accent.AnchorPoint = Vector2.new(0, 0.5)
+    Accent.Position = UDim2.new(0, 0, 0.5, 0)
+    Accent.Size = UDim2.fromOffset(3, 14)
+    Accent.BackgroundColor3 = T.Sky
+    Accent.BorderSizePixel = 0
+    Accent.Parent = Nav
+    corner(Accent, 2)
+
+    label({
+        Parent = Nav, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -52, 1, 0),
+        Text = "Scripts", Font = Enum.Font.GothamBold, TextColor3 = T.Sky,
+    })
+
+    local CountBadge = label({
+        Parent = Nav, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0),
+        Size = UDim2.fromOffset(24, 18), Text = "0", Font = Enum.Font.GothamBold, TextSize = 10,
+        TextColor3 = T.Sky, TextXAlignment = Enum.TextXAlignment.Center,
+        BackgroundTransparency = 0.8, BackgroundColor3 = T.Sky,
+    })
+    corner(CountBadge, 9)
+
+    -- FOOTER PROFIL
+    local UserFrame = Instance.new("Frame")
+    UserFrame.AnchorPoint = Vector2.new(0, 1)
+    UserFrame.Position = UDim2.new(0, 8, 1, -8)
+    UserFrame.Size = UDim2.new(1, -16, 0, 40)
+    UserFrame.BackgroundColor3 = T.Glass
+    UserFrame.BackgroundTransparency = 0.93
+    UserFrame.BorderSizePixel = 0
+    UserFrame.Parent = Sidebar
+    corner(UserFrame, 10)
+
+    local Avatar = Instance.new("ImageLabel")
+    Avatar.Position = UDim2.new(0, 7, 0.5, -13)
+    Avatar.Size = UDim2.fromOffset(26, 26)
+    Avatar.BackgroundColor3 = T.Glass
+    Avatar.BackgroundTransparency = 0.9
+    Avatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
+    Avatar.Parent = UserFrame
+    corner(Avatar, 13)
+
+    label({
+        Parent = UserFrame, Position = UDim2.fromOffset(40, 6), Size = UDim2.new(1, -46, 0, 14),
+        Text = LocalPlayer.DisplayName, Font = Enum.Font.GothamBold, TextSize = 11,
+    })
+    label({
+        Parent = UserFrame, Position = UDim2.fromOffset(40, 21), Size = UDim2.new(1, -46, 0, 12),
+        Text = "@" .. LocalPlayer.Name, TextSize = 9, TextColor3 = T.Sub,
+    })
+
+    -- AREA KONTEN
+    local Content = Instance.new("Frame")
+    Content.Position = UDim2.fromOffset(156, 0)
+    Content.Size = UDim2.new(1, -156, 1, 0)
+    Content.BackgroundTransparency = 1
+    Content.Parent = Main
+
+    local TopBar = Instance.new("Frame")
+    TopBar.Size = UDim2.new(1, 0, 0, 44)
+    TopBar.BackgroundTransparency = 1
+    TopBar.Active = true
+    TopBar.Parent = Content
+
+    local TopLine = Instance.new("Frame")
+    TopLine.AnchorPoint = Vector2.new(0.5, 1)
+    TopLine.Position = UDim2.new(0.5, 0, 1, 0)
+    TopLine.Size = UDim2.new(1, -24, 0, 1)
+    TopLine.BackgroundColor3 = T.Glass
+    TopLine.BackgroundTransparency = 0.9
+    TopLine.BorderSizePixel = 0
+    TopLine.Parent = TopBar
+
+    -- KOLOM CARI
+    local SearchBox = Instance.new("Frame")
+    SearchBox.AnchorPoint = Vector2.new(0, 0.5)
+    SearchBox.Position = UDim2.new(0, 12, 0.5, 0)
+    SearchBox.Size = UDim2.new(1, -118, 0, 28)
+    SearchBox.BackgroundColor3 = T.Glass
+    SearchBox.BackgroundTransparency = 0.92
+    SearchBox.BorderSizePixel = 0
+    SearchBox.Parent = TopBar
+    corner(SearchBox, 8)
+    local SearchStroke = stroke(SearchBox, T.Glass, 1, 0.85)
+
+    local SearchInput = Instance.new("TextBox")
+    SearchInput.Size = UDim2.fromScale(1, 1)
+    SearchInput.BackgroundTransparency = 1
+    SearchInput.Text = ""
+    SearchInput.PlaceholderText = "Cari script..."
+    SearchInput.PlaceholderColor3 = T.Sub
+    SearchInput.TextColor3 = T.Text
+    SearchInput.Font = Enum.Font.Gotham
+    SearchInput.TextSize = 12
+    SearchInput.TextXAlignment = Enum.TextXAlignment.Left
+    SearchInput.ClearTextOnFocus = false
+    SearchInput.Parent = SearchBox
+    padding(SearchInput, 10, 0, 10, 0)
+
+    connect(SearchInput.Focused, function()
+        tween(SearchStroke, 0.15, { Color = T.Sky, Transparency = 0.3 })
+    end)
+    connect(SearchInput.FocusLost, function()
+        tween(SearchStroke, 0.15, { Color = T.Glass, Transparency = 0.85 })
+    end)
+
+    -- KONTROL JENDELA (ikon digambar, bebas masalah font)
+    local Controls = Instance.new("Frame")
+    Controls.AnchorPoint = Vector2.new(1, 0.5)
+    Controls.Position = UDim2.new(1, -12, 0.5, 0)
+    Controls.Size = UDim2.fromOffset(90, 26)
+    Controls.BackgroundTransparency = 1
+    Controls.Parent = TopBar
+
+    local ControlList = Instance.new("UIListLayout")
+    ControlList.FillDirection = Enum.FillDirection.Horizontal
+    ControlList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    ControlList.VerticalAlignment = Enum.VerticalAlignment.Center
+    ControlList.SortOrder = Enum.SortOrder.LayoutOrder
+    ControlList.Padding = UDim.new(0, 6)
+    ControlList.Parent = Controls
+
+    local function controlBtn(kind, hoverColor, layoutOrder, callback)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.fromOffset(26, 26)
+        b.LayoutOrder = layoutOrder
+        b.BackgroundColor3 = T.Glass
+        b.BackgroundTransparency = 0.9
+        b.AutoButtonColor = false
+        b.Text = ""
+        b.Parent = Controls
+        corner(b, 8)
+
+        local tint = {}
+        local function bar(w, h, rot)
+            local f = Instance.new("Frame")
+            f.AnchorPoint = Vector2.new(0.5, 0.5)
+            f.Position = UDim2.fromScale(0.5, 0.5)
+            f.Size = UDim2.fromOffset(w, h)
+            f.Rotation = rot or 0
+            f.BackgroundColor3 = T.Sub
+            f.BorderSizePixel = 0
+            f.Parent = b
+            corner(f, 1)
+            table.insert(tint, f)
+        end
+
+        if kind == "min" then
+            bar(10, 2)
+        elseif kind == "close" then
+            bar(12, 2, 45)
+            bar(12, 2, -45)
+        else
+            local sq = Instance.new("Frame")
+            sq.AnchorPoint = Vector2.new(0.5, 0.5)
+            sq.Position = UDim2.fromScale(0.5, 0.5)
+            sq.Size = UDim2.fromOffset(10, 10)
+            sq.BackgroundTransparency = 1
+            sq.Parent = b
+            corner(sq, 2)
+            table.insert(tint, stroke(sq, T.Sub, 1.6, 0))
+        end
+
+        local function paint(col)
+            for _, t in ipairs(tint) do
+                local prop = t:IsA("UIStroke") and "Color" or "BackgroundColor3"
+                tween(t, 0.15, { [prop] = col })
+            end
+        end
+
+        connect(b.MouseEnter, function()
+            tween(b, 0.15, { BackgroundColor3 = hoverColor, BackgroundTransparency = 0.8 })
+            paint(hoverColor)
+        end)
+        connect(b.MouseLeave, function()
+            tween(b, 0.15, { BackgroundColor3 = T.Glass, BackgroundTransparency = 0.9 })
+            paint(T.Sub)
+        end)
+        connect(b.Activated, callback)
+    end
+
+    -- ANIMASI BUKA/TUTUP
+    local function setOpen(state)
+        if animating or state == isOpen then return end
+        animating = true
+        isOpen = state
+        local info = TweenInfo.new(0.28, Enum.EasingStyle.Back, isOpen and Enum.EasingDirection.Out or Enum.EasingDirection.In)
+
+        if isOpen then
+            Container.Visible = true
+            scale.Scale = 0.85
+            tween(Shadow, 0.25, { ImageTransparency = 0.5 })
+        else
+            tween(Shadow, 0.2, { ImageTransparency = 1 })
+        end
+
+        local tw = TweenService:Create(scale, info, { Scale = isOpen and 1 or 0.85 })
+        tw:Play()
+        tw.Completed:Connect(function()
+            if not isOpen then Container.Visible = false end
+            animating = false
+        end)
+    end
+
+    local function toggleMax()
+        isMax = not isMax
+        local size = isMax and UDim2.fromOffset(maxW, maxH) or UDim2.fromOffset(defW, defH)
+        tween(Container, 0.3, { Size = size, Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Quart)
+    end
+
+    controlBtn("min", T.Sky, 1, function() setOpen(false) end)
+    controlBtn("max", T.Sky, 2, toggleMax)
+    controlBtn("close", T.Red, 3, function() ScreenGui:Destroy() end)
+
+    makeDraggable(TopBar, Container)
+    makeDraggable(Sidebar, Container)
+
+    -- DAFTAR SCRIPT
+    local Scroll = Instance.new("ScrollingFrame")
+    Scroll.Position = UDim2.fromOffset(12, 52)
+    Scroll.Size = UDim2.new(1, -24, 1, -60)
+    Scroll.BackgroundTransparency = 1
+    Scroll.BorderSizePixel = 0
+    Scroll.ScrollBarThickness = 3
+    Scroll.ScrollBarImageColor3 = T.Sky
+    Scroll.ScrollBarImageTransparency = 0.3
+    Scroll.CanvasSize = UDim2.new()
+    Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    Scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    Scroll.Parent = Content
+    padding(Scroll, 0, 2, 6, 24)
+
+    local ScrollList = Instance.new("UIListLayout")
+    ScrollList.SortOrder = Enum.SortOrder.LayoutOrder
+    ScrollList.Padding = UDim.new(0, 8)
+    ScrollList.Parent = Scroll
+
+    local EmptyLabel = label({
+        Parent = Content, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 10),
+        Size = UDim2.new(1, -40, 0, 20), Text = "Tidak ada script yang cocok",
+        TextColor3 = T.Sub, TextXAlignment = Enum.TextXAlignment.Center, Visible = false,
+    })
+
+    -- TOAST
+    local Toast = Instance.new("Frame")
+    Toast.AnchorPoint = Vector2.new(0.5, 1)
+    Toast.Position = UDim2.new(0.5, 0, 1, 50)
+    Toast.Size = UDim2.new(1, -60, 0, 32)
+    Toast.BackgroundColor3 = T.Dark
+    Toast.BackgroundTransparency = 0.05
+    Toast.BorderSizePixel = 0
+    Toast.ZIndex = 20
+    Toast.Parent = Content
+    corner(Toast, 10)
+    stroke(Toast, T.Glass, 1, 0.82)
+
+    local ToastDot = Instance.new("Frame")
+    ToastDot.AnchorPoint = Vector2.new(0, 0.5)
+    ToastDot.Position = UDim2.new(0, 12, 0.5, 0)
+    ToastDot.Size = UDim2.fromOffset(8, 8)
+    ToastDot.BackgroundColor3 = T.Sky
+    ToastDot.BorderSizePixel = 0
+    ToastDot.ZIndex = 21
+    ToastDot.Parent = Toast
+    corner(ToastDot, 4)
+
+    local ToastText = label({
+        Parent = Toast, Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -38, 1, 0),
+        Text = "", TextSize = 11, ZIndex = 21,
+    })
+
+    local toastToken = 0
+    local function notify(text, color)
+        toastToken = toastToken + 1
+        local mine = toastToken
+        ToastText.Text = text
+        ToastDot.BackgroundColor3 = color or T.Sky
+        tween(Toast, 0.25, { Position = UDim2.new(0.5, 0, 1, -14) }, Enum.EasingStyle.Back)
+        task.delay(2.4, function()
+            if mine == toastToken and Toast.Parent then
+                tween(Toast, 0.2, { Position = UDim2.new(0.5, 0, 1, 50) })
+            end
+        end)
+    end
+
+    -- RESIZE GRIP
+    local Grip = Instance.new("TextButton")
+    Grip.AnchorPoint = Vector2.new(1, 1)
+    Grip.Position = UDim2.new(1, -4, 1, -4)
+    Grip.Size = UDim2.fromOffset(22, 22)
+    Grip.BackgroundTransparency = 1
+    Grip.Text = ""
+    Grip.ZIndex = 10
+    Grip.Parent = Content
+
+    local function gripLine(len, cx, cy)
+        local f = Instance.new("Frame")
+        f.AnchorPoint = Vector2.new(0.5, 0.5)
+        f.Position = UDim2.fromOffset(cx, cy)
+        f.Size = UDim2.fromOffset(len, 2)
+        f.Rotation = -45
+        f.BackgroundColor3 = T.Sub
+        f.BackgroundTransparency = 0.4
+        f.BorderSizePixel = 0
+        f.ZIndex = 10
+        f.Parent = Grip
+        corner(f, 1)
+    end
+    gripLine(14, 12, 12)
+    gripLine(7, 16, 16)
+
+    local rStart, rW, rH, rPos
+    connect(Grip.InputBegan, function(input)
+        if not isPointer(input) then return end
+        resizing = true
+        isMax = false
+        rStart = input.Position
+        rW, rH = Container.Size.X.Offset, Container.Size.Y.Offset
+        rPos = Container.Position
+        local c
+        c = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                resizing = false
+                c:Disconnect()
+            end
+        end)
+    end)
+    connect(UserInputService.InputChanged, function(input)
+        if resizing and isMove(input) then
+            local d = input.Position - rStart
+            local w = math.clamp(rW + d.X, minW, vp.X - 24)
+            local h = math.clamp(rH + d.Y, minH, vp.Y - 24)
+            Container.Size = UDim2.fromOffset(w, h)
+            Container.Position = rPos + UDim2.fromOffset((w - rW) / 2, (h - rH) / 2)
+        end
+    end)
+
+    -- TOMBOL LAUNCHER
+    local Launcher = Instance.new("ImageButton")
+    Launcher.Name = "WindUITToggleGui"
+    Launcher.Size = UDim2.fromOffset(46, 46)
+    Launcher.Position = UDim2.new(0, 16, 0.45, 0)
+    Launcher.BackgroundColor3 = Color3.fromRGB(14, 18, 28)
+    Launcher.BackgroundTransparency = 0.15
+    Launcher.Image = config.Icon or ""
+    Launcher.ScaleType = Enum.ScaleType.Crop
+    Launcher.AutoButtonColor = false
+    Launcher.Parent = ScreenGui
+    corner(Launcher, 14)
+    stroke(Launcher, T.Sky, 1.5, 0.35)
+    makeDraggable(Launcher, Launcher, function() setOpen(not isOpen) end)
+
+    local toggleKey = config.ToggleKey or Enum.KeyCode.RightShift
+    connect(UserInputService.InputBegan, function(input, processed)
+        if not processed and input.KeyCode == toggleKey then setOpen(not isOpen) end
+    end)
+
+    -- API
+    local api = {}
+    local entries, order, count = {}, 0, 0
+
+    local function applyFilter()
+        local q = string.lower(SearchInput.Text)
+        local shown = 0
+        for _, e in ipairs(entries) do
+            if e.section then
+                e.frame.Visible = (q == "")
+            else
+                local hit = (q == "") or (string.find(e.key, q, 1, true) ~= nil)
+                e.frame.Visible = hit
+                if hit then shown = shown + 1 end
+            end
+        end
+        EmptyLabel.Visible = (shown == 0 and count > 0)
+    end
+    connect(SearchInput:GetPropertyChangedSignal("Text"), applyFilter)
+
+    function api:AddSection(text)
+        order = order + 1
+        local Sec = Instance.new("Frame")
+        Sec.Size = UDim2.new(1, 0, 0, 20)
+        Sec.BackgroundTransparency = 1
+        Sec.LayoutOrder = order
+        Sec.Parent = Scroll
+        label({
+            Parent = Sec, Position = UDim2.fromOffset(2, 0), Size = UDim2.new(1, -2, 1, 0),
+            Text = string.upper(text), Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = T.Sky,
+        })
+        table.insert(entries, { frame = Sec, section = true })
+    end
+
+    function api:AddButton(text, callback, opts)
+        opts = opts or {}
+        order = order + 1
+        count = count + 1
+        CountBadge.Text = tostring(count)
+
+        local clean = (text:gsub("^%s*[Mm]ichel%s*[xX]%s*", ""))
+        if clean == "" then clean = text end
+        local desc = opts.Desc or "Tap untuk menjalankan"
+
+        local Card = Instance.new("TextButton")
+        Card.Size = UDim2.new(1, 0, 0, 52)
+        Card.BackgroundColor3 = T.Glass
+        Card.BackgroundTransparency = 0.9
+        Card.AutoButtonColor = false
+        Card.Text = ""
+        Card.LayoutOrder = order
+        Card.Parent = Scroll
+        corner(Card, 10)
+        local cardStroke = stroke(Card, T.Glass, 1, 0.82)
+        local cardScale = Instance.new("UIScale")
+        cardScale.Parent = Card
+
+        local Badge = Instance.new("Frame")
+        Badge.Position = UDim2.new(0, 10, 0.5, -16)
+        Badge.Size = UDim2.fromOffset(32, 32)
+        Badge.BackgroundColor3 = T.Sky
+        Badge.BackgroundTransparency = 0.82
+        Badge.BorderSizePixel = 0
+        Badge.Parent = Card
+        corner(Badge, 9)
+
+        label({
+            Parent = Badge, Size = UDim2.fromScale(1, 1), Text = string.upper(string.sub(clean, 1, 1)),
+            Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Sky,
+            TextXAlignment = Enum.TextXAlignment.Center,
+        })
+        label({
+            Parent = Card, Position = UDim2.fromOffset(52, 9), Size = UDim2.new(1, -124, 0, 16),
+            Text = clean, Font = Enum.Font.GothamBold, TextSize = 13,
+        })
+        label({
+            Parent = Card, Position = UDim2.fromOffset(52, 27), Size = UDim2.new(1, -124, 0, 14),
+            Text = desc, TextSize = 10, TextColor3 = T.Sub,
+        })
+
+        local Pill = Instance.new("TextLabel")
+        Pill.AnchorPoint = Vector2.new(1, 0.5)
+        Pill.Position = UDim2.new(1, -10, 0.5, 0)
+        Pill.Size = UDim2.fromOffset(52, 24)
+        Pill.BackgroundColor3 = T.Sky
+        Pill.BackgroundTransparency = 0.82
+        Pill.Text = "RUN"
+        Pill.TextColor3 = T.Sky
+        Pill.Font = Enum.Font.GothamBold
+        Pill.TextSize = 10
+        Pill.Parent = Card
+        corner(Pill, 12)
+
+        local function setPill(txt, col)
+            Pill.Text = txt
+            tween(Pill, 0.15, { BackgroundColor3 = col, TextColor3 = col })
+        end
+
+        connect(Card.MouseEnter, function()
+            tween(Card, 0.15, { BackgroundTransparency = 0.8 })
+            tween(cardStroke, 0.15, { Color = T.Sky, Transparency = 0.35 })
+        end)
+        connect(Card.MouseLeave, function()
+            tween(Card, 0.15, { BackgroundTransparency = 0.9 })
+            tween(cardStroke, 0.15, { Color = T.Glass, Transparency = 0.82 })
+            tween(cardScale, 0.1, { Scale = 1 })
+        end)
+        connect(Card.MouseButton1Down, function() tween(cardScale, 0.08, { Scale = 0.97 }) end)
+        connect(Card.MouseButton1Up, function() tween(cardScale, 0.12, { Scale = 1 }) end)
+
+        local busy = false
+        connect(Card.Activated, function()
+            if busy then return end
+            busy = true
+            setPill("...", T.Amber)
+            task.spawn(function()
+                local ok, err = pcall(callback)
+                if ok then
+                    setPill("OK", T.Green)
+                    notify(clean .. " dijalankan", T.Green)
+                else
+                    setPill("ERR", T.Red)
+                    notify("Gagal: " .. tostring(err), T.Red)
+                    warn("[" .. (config.Title or "WindUI") .. "] " .. clean .. ": " .. tostring(err))
+                end
+                task.wait(1.6)
+                setPill("RUN", T.Sky)
+                busy = false
+            end)
+        end)
+
+        table.insert(entries, { frame = Card, key = string.lower(clean .. " " .. desc) })
+        applyFilter()
+    end
+
+    function api:Notify(text, color) notify(text, color) end
+    function api:Toggle() setOpen(not isOpen) end
+    function api:Destroy() ScreenGui:Destroy() end
+
+    return api
+end
+
+_G.CustomWindUI = CustomWindUI
+
+-- PART 2: MAIN EXECUTION SCRIPT
+local CustomWindUI = _G.CustomWindUI
+
+local Window = CustomWindUI:CreateWindow({
+    Title = "Michel Script x Library",
+    Author = "MicheLyJow",
+    Icon = "rbxthumb://type=Asset&id=102030546943731&w=420&h=420"
+})
+
+Window:AddSection("Game Scripts")
+
+Window:AddButton("Michel x Fire a Lucky Block", function()
+    loadstring(game:HttpGet('https://pastefy.app/xee7Iw0f/raw'))()
+end)
+
+Window:AddButton("Michel x +1 Strength to Grow Your Arm", function()
+    loadstring(game:HttpGet('https://pastefy.app/iSmErYrK/raw'))()
+end)
+
+Window:AddButton("Michel x Ride A Pet", function()
+    loadstring(game:HttpGet('https://pastefy.app/t5jqhh5a/raw'))()
+end)
+
+Window:AddButton("Michel x Climb and Drop a Lucky Block", function()
+    loadstring(game:HttpGet('https://pastefy.app/1DVBWRVr/raw'))()
+end)
