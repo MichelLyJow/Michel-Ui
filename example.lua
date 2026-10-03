@@ -1,13 +1,13 @@
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/USER/REPO/main/MichelScriptXne.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/MichelLyJow/Michel-Ui/refs/heads/main/MichelScriptXne.lua"))()
 
-Library.WhitelistedUsers = {"UsernameKamu"}
+Library.WhitelistedUsers = {"YourUsername"},
 
 local Window = Library:CreateWindow({
     Title = "Michel Script Xne",
-    Subtitle = "Made By Hypol-X",
+    Subtitle = "Made By Ms Studio",
     Theme = "Violet",
     SphereText = true,
-    SphereWords = "MX",
+    SphereWords = "MS",
     ToggleKey = Enum.KeyCode.RightShift,
     BackgroundImage = "rbxassetid://127220717503714",
     WindowTransparency = 0,
