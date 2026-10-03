@@ -1,4 +1,4 @@
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/USER/REPO/main/MichelScriptXne.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/MichelLyJow/Michel-Ui/refs/heads/main/MichelScriptXne.lua"))()
 
 Library.WhitelistedUsers = {"YourUsername"}
 
