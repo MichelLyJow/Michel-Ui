@@ -1,5 +1,5 @@
 -- Contoh pemakaian Michel Script Xne v3 (Easy API)
-local Library = loadstring(readfile("MichelScriptXne_v3.lua"))() -- atau loadstring(game:HttpGet("LINK_RAW"))()
+local Library = loadstring(game:HttpGet('https://raw.githubusercontent.com/MichelLyJow/Michel-Ui/refs/heads/main/MichelScriptXne_v3.lua'))() -- atau loadstring(game:HttpGet("LINK_RAW"))()
 
 local Window = Library:CreateWindow({
     Title = "Michel Community",           -- kata pertama otomatis berwarna accent
