@@ -1,4 +1,4 @@
-# Michel UI (MichelScriptXne v3)
+# Cortex Library (CortexSite v3)
 
 A Roblox Lua UI library. One loader line, then you build your menu with plain tables.
 
