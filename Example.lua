@@ -1,4 +1,4 @@
-local Library = loadstring(game:HttpGet('https://raw.githubusercontent.com/MichelLyJow/Michel-Ui/refs/heads/main/MichelScriptXne_v3.lua'))()
+local Library = loadstring(game:HttpGet('https://raw.githubusercontent.com/MichelLyJow/Michel-Ui/refs/heads/main/cs.lua'))()
 
 local Window = Library:CreateWindow({
     Title = "Cortex Site",
