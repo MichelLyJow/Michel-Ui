@@ -3,7 +3,7 @@
 A Roblox Lua UI library. One loader line, then you build your menu with plain tables.
 
 ```lua
-local Library = loadstring(game:HttpGet('https://raw.githubusercontent.com/MichelLyJow/Michel-Ui/refs/heads/main/MichelScriptXne_v3.lua'))()
+local Library = loadstring(game:HttpGet('https://cortexsite.vercel.app/loaders/libary'))()
 ```
 
 A full working script is in [`Example.lua`](Example.lua).
